@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>রমজান ইফতার ম্যাপ</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- Leaflet Map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+body{margin:0;font-family:system-ui;background:linear-gradient(#021b15,#064e3b);color:white}
+header{padding:18px;text-align:center;font-size:22px;font-weight:700}
+.container{max-width:1000px;margin:auto;padding:16px}
+.card{background:white;color:#111;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+input,textarea,button{width:100%;padding:10px;margin-top:8px;border-radius:8px;border:1px solid #ddd;font-size:14px}
+button{background:#059669;color:white;border:none;font-weight:600;cursor:pointer}
+button:hover{background:#047857}
+.vote{display:flex;gap:8px;margin-top:10px}
+.vote button{flex:1}
+#map{height:320px;border-radius:14px;margin-bottom:16px}
+small{opacity:.7}
+</style>
+</head>
+<body>
+<header>🌙 রমজান ইফতার ম্যাপ 🕌</header>
+
+<div class="container">
+<div id="map"></div>
+
+<div class="card">
+<h3>নতুন মসজিদ যোগ করুন</h3>
+<input id="name" placeholder="মসজিদের নাম">
+<input id="locationText" placeholder="এলাকার নাম (optional)">
+<textarea id="iftar" placeholder="ইফতারিতে কি দেবে"></textarea>
+<button onclick="addMosque()">যোগ করুন</button>
+<small>লোকেশন অটো নেয়া হবে</small>
+</div>
+
+<div id="list"></div>
+</div>
+
+<script>
+/* ================== FIREBASE CONFIG ================== */
+const firebaseConfig={
+ apiKey:"YOUR_API_KEY",
+ authDomain:"YOUR_DOMAIN",
+ projectId:"YOUR_PROJECT_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.firestore();
+
+/* ================== MAP + AUTO LOCATION ================== */
+let userLat=23.8103,userLng=90.4125; // default
+
+if(navigator.geolocation){
+ navigator.geolocation.getCurrentPosition(pos=>{
+   userLat=pos.coords.latitude;
+   userLng=pos.coords.longitude;
+   map.setView([userLat,userLng],13);
+   L.marker([userLat,userLng]).addTo(map).bindPopup("আপনি এখানে");
+ });
+}
+
+const map=L.map('map').setView([userLat,userLng],12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+/* ================== ADD DATA ================== */
+async function addMosque(){
+const name=nameEl.value.trim();
+const iftar=iftarEl.value.trim();
+const locationText=locationTextEl.value.trim();
+if(!name||!iftar) return alert('সব তথ্য দিন');
+
+await db.collection('mosques').add({
+ name,iftar,locationText,
+ lat:userLat,lng:userLng,
+ yes:0,no:0,
+ date:new Date().toISOString().slice(0,10),
+ created:Date.now()
+});
+
+nameEl.value='';iftarEl.value='';locationTextEl.value='';
+}
+
+const list=document.getElementById('list');
+const nameEl=document.getElementById('name');
+const iftarEl=document.getElementById('iftar');
+const locationTextEl=document.getElementById('locationText');
+
+/* ================== LOAD TODAY ONLY ================== */
+const today=new Date().toISOString().slice(0,10);
+
+db.collection('mosques').where('date','==',today)
+.orderBy('created','desc')
+.onSnapshot(snap=>{
+ list.innerHTML='';
+ snap.forEach(doc=>{
+   const d=doc.data();
+
+   /* map marker */
+   if(d.lat&&d.lng){
+     L.marker([d.lat,d.lng]).addTo(map)
+      .bindPopup(`<b>${d.name}</b><br>${d.iftar}`);
+   }
+
+   const votedKey='vote_'+doc.id;
+   const voted=localStorage.getItem(votedKey);
+
+   const card=document.createElement('div');
+   card.className='card';
+   card.innerHTML=`
+   <b>${d.name}</b><br>
+   📍 ${d.locationText||''}<br>
+   🍽️ ${d.iftar}
+
+   <div class="vote">
+     <button onclick="vote('${doc.id}','yes')" ${voted?'disabled':''}>✔ সঠিক (${d.yes||0})</button>
+     <button onclick="vote('${doc.id}','no')" ${voted?'disabled':''}>✖ ভুল (${d.no||0})</button>
+   </div>
+   <small>${voted?'আপনি ভোট দিয়েছেন':''}</small>
+   `;
+   list.appendChild(card);
+ });
+});
+
+/* ================== ONE USER ONE VOTE ================== */
+async function vote(id,type){
+const key='vote_'+id;
+if(localStorage.getItem(key)) return alert('আপনি ইতিমধ্যে ভোট দিয়েছেন');
+
+const ref=db.collection('mosques').doc(id);
+await db.runTransaction(async t=>{
+ const doc=await t.get(ref);
+ const data=doc.data();
+ if(type==='yes') t.update(ref,{yes:(data.yes||0)+1});
+ else t.update(ref,{no:(data.no||0)+1});
+});
+
+localStorage.setItem(key,'1');
+}
+</script>
+</body>
+</html>
+
