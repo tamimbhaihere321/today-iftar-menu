@@ -23,6 +23,7 @@ button{background:#059669;color:white;border:none;font-weight:600}
 #map{height:340px;border-radius:14px;margin-bottom:16px}
 </style>
 </head>
+
 <body>
 
 <header>🌙 রমজান ইফতার ম্যাপ 🕌</header>
@@ -44,7 +45,7 @@ button{background:#059669;color:white;border:none;font-weight:600}
 
 <script>
 
-/* FIREBASE CONFIG */
+/* FIREBASE */
 const firebaseConfig={
  apiKey:"AIzaSyDYn2R6RZ4Tt2X6virO5RJ6Aqumv3sCfA0",
  authDomain:"iftar-menu.firebaseapp.com",
@@ -56,7 +57,7 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 
-/* MAP + GPS */
+/* MAP */
 let userLat=23.8103,userLng=90.4125;
 let selectedLat=null,selectedLng=null;
 let focusMarker=null;
@@ -64,17 +65,14 @@ let focusMarker=null;
 const map=L.map('map').setView([userLat,userLng],12);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-function getLocation(){
- navigator.geolocation?.getCurrentPosition(pos=>{
-   userLat=pos.coords.latitude;
-   userLng=pos.coords.longitude;
-   map.setView([userLat,userLng],15);
-   L.marker([userLat,userLng]).addTo(map).bindPopup("📍 আপনি এখানে");
- },()=>{});
-}
-setTimeout(getLocation,800);
+navigator.geolocation?.getCurrentPosition(pos=>{
+ userLat=pos.coords.latitude;
+ userLng=pos.coords.longitude;
+ map.setView([userLat,userLng],15);
+ L.marker([userLat,userLng]).addTo(map).bindPopup("📍 আপনি এখানে");
+});
 
-/* MAP TAP SELECT */
+/* MAP TAP */
 let selectMarker=null;
 map.on('click',e=>{
  selectedLat=e.latlng.lat;
@@ -82,8 +80,7 @@ map.on('click',e=>{
 
  if(selectMarker) map.removeLayer(selectMarker);
  selectMarker=L.marker([selectedLat,selectedLng]).addTo(map)
-  .bindPopup("লোকেশন সিলেক্ট হয়েছে")
-  .openPopup();
+  .bindPopup("লোকেশন সিলেক্ট হয়েছে").openPopup();
 });
 
 /* ADD */
@@ -94,11 +91,11 @@ async function addMosque(){
  if(!name||!iftar) return alert("সব তথ্য দিন");
 
  await db.collection('mosques').add({
-   name,iftar,locationText,
-   lat:selectedLat||userLat,
-   lng:selectedLng||userLng,
-   yes:0,no:0,
-   date:new Date().toISOString().slice(0,10)
+  name,iftar,locationText,
+  lat:selectedLat||userLat,
+  lng:selectedLng||userLng,
+  yes:0,no:0,
+  date:new Date().toISOString().slice(0,10)
  });
 
  nameEl.value="";
@@ -107,14 +104,14 @@ async function addMosque(){
 }
 
 /* DISTANCE */
-function distance(lat1,lng1,lat2,lng2){
+function distance(a,b,c,d){
  const R=6371;
- const dLat=(lat2-lat1)*Math.PI/180;
- const dLng=(lng2-lng1)*Math.PI/180;
- const a=Math.sin(dLat/2)**2+
- Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+ const dLat=(c-a)*Math.PI/180;
+ const dLng=(d-b)*Math.PI/180;
+ const x=Math.sin(dLat/2)**2+
+ Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*
  Math.sin(dLng/2)**2;
- return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+ return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
 }
 
 /* LOAD TODAY + NEAREST FIRST */
@@ -132,9 +129,8 @@ db.collection('mosques').where('date','==',today)
  });
 
  arr.sort((a,b)=>{
-   const da=distance(userLat,userLng,a.lat,a.lng);
-   const dbb=distance(userLat,userLng,b.lat,b.lng);
-   return da-dbb;
+   return distance(userLat,userLng,a.lat,a.lng)
+        - distance(userLat,userLng,b.lat,b.lng);
  });
 
  arr.forEach(d=>{
@@ -154,24 +150,18 @@ db.collection('mosques').where('date','==',today)
    </div>
    `;
 
-   /* CLICK → MAP FOCUS ⭐ */
+   /* CLICK → MAP PIN */
    card.onclick=()=>{
-     if(!d.lat||!d.lng) return;
-
      map.setView([d.lat,d.lng],17);
-
      if(focusMarker) map.removeLayer(focusMarker);
-
      focusMarker=L.marker([d.lat,d.lng])
-      .addTo(map)
-      .bindPopup(`<b>${d.name}</b><br>${d.iftar}`)
-      .openPopup();
-
+       .addTo(map)
+       .bindPopup(`<b>${d.name}</b><br>${d.iftar}`)
+       .openPopup();
      window.scrollTo({top:0,behavior:'smooth'});
    };
 
    list.appendChild(card);
-
  });
 
 });
@@ -179,7 +169,6 @@ db.collection('mosques').where('date','==',today)
 /* VOTE */
 async function vote(id,type){
  if(localStorage.getItem('vote_'+id)) return alert("ভোট দেওয়া হয়েছে");
-
  const ref=db.collection('mosques').doc(id);
  await db.runTransaction(async t=>{
    const doc=await t.get(ref);
@@ -187,80 +176,10 @@ async function vote(id,type){
    if(type==='yes') t.update(ref,{yes:(data.yes||0)+1});
    else t.update(ref,{no:(data.no||0)+1});
  });
-
  localStorage.setItem('vote_'+id,'1');
 }
 
-const nameEl=document.getElementById('name');
-const iftarEl=document.getElementById('iftar');
-const locationTextEl=document.getElementById('locationText');
-const list=document.getElementById('list');
-
-</script>
-</body>
-</html>}
-
-/* LOAD TODAY + NEAREST FIRST */
-const today=new Date().toISOString().slice(0,10);
-
-db.collection('mosques').where('date','==',today)
-.onSnapshot(snap=>{
-
- list.innerHTML='';
- let arr=[];
-
- snap.forEach(doc=>{
-   const d=doc.data();
-   arr.push({id:doc.id,...d});
- });
-
- arr.sort((a,b)=>{
-   const da=distance(userLat,userLng,a.lat,a.lng);
-   const dbb=distance(userLat,userLng,b.lat,b.lng);
-   return da-dbb;
- });
-
- arr.forEach(d=>{
-
-   if(d.lat&&d.lng){
-     L.marker([d.lat,d.lng]).addTo(map)
-      .bindPopup(`<b>${d.name}</b><br>${d.iftar}`);
-   }
-
-   const voted=localStorage.getItem('vote_'+d.id);
-
-   const card=document.createElement('div');
-   card.className='card';
-   card.innerHTML=`
-   <b>${d.name}</b><br>
-   📍 ${d.locationText||''}<br>
-   🍽️ ${d.iftar}
-
-   <div class="vote">
-   <button onclick="vote('${d.id}','yes')" ${voted?'disabled':''}>✔ (${d.yes||0})</button>
-   <button onclick="vote('${d.id}','no')" ${voted?'disabled':''}>✖ (${d.no||0})</button>
-   </div>
-   `;
-   list.appendChild(card);
- });
-
-});
-
-/* VOTE */
-async function vote(id,type){
- if(localStorage.getItem('vote_'+id)) return alert("ভোট দেওয়া হয়েছে");
-
- const ref=db.collection('mosques').doc(id);
- await db.runTransaction(async t=>{
-   const doc=await t.get(ref);
-   const data=doc.data();
-   if(type==='yes') t.update(ref,{yes:(data.yes||0)+1});
-   else t.update(ref,{no:(data.no||0)+1});
- });
-
- localStorage.setItem('vote_'+id,'1');
-}
-
+/* ELEMENTS */
 const nameEl=document.getElementById('name');
 const iftarEl=document.getElementById('iftar');
 const locationTextEl=document.getElementById('locationText');
