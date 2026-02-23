@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="bn">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>রমজান ইফতার ম্যাপ</title>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -16,13 +16,11 @@ body{margin:0;font-family:system-ui;background:linear-gradient(#021b15,#064e3b);
 header{padding:18px;text-align:center;font-size:22px;font-weight:700}
 .container{max-width:1000px;margin:auto;padding:16px}
 .card{background:white;color:#111;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 6px 18px rgba(0,0,0,.2)}
-input,textarea,button{width:100%;padding:10px;margin-top:8px;border-radius:8px;border:1px solid #ddd;font-size:14px}
-button{background:#059669;color:white;border:none;font-weight:600;cursor:pointer}
-button:hover{background:#047857}
+input,textarea,button{width:100%;padding:10px;margin-top:8px;border-radius:8px;border:1px solid #ddd}
+button{background:#059669;color:white;border:none;font-weight:600}
 .vote{display:flex;gap:8px;margin-top:10px}
 .vote button{flex:1}
-#map{height:320px;border-radius:14px;margin-bottom:16px}
-small{opacity:.7}
+#map{height:340px;border-radius:14px;margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -35,10 +33,10 @@ small{opacity:.7}
 <div class="card">
 <h3>নতুন মসজিদ যোগ করুন</h3>
 <input id="name" placeholder="মসজিদের নাম">
-<input id="locationText" placeholder="এলাকার নাম (optional)">
+<input id="locationText" placeholder="এলাকার নাম">
 <textarea id="iftar" placeholder="ইফতারিতে কি দেবে"></textarea>
 <button onclick="addMosque()">যোগ করুন</button>
-<small>লোকেশন অটো নেয়া হবে</small>
+<small>ম্যাপে ট্যাপ করে লোকেশন দিন</small>
 </div>
 
 <div id="list"></div>
@@ -47,84 +45,100 @@ small{opacity:.7}
 <script>
 
 /* FIREBASE CONFIG */
-const firebaseConfig = {
-  apiKey: "AIzaSyDYn2R6RZ4Tt2X6virO5RJ6Aqumv3sCfA0",
-  authDomain: "iftar-menu.firebaseapp.com",
-  projectId: "iftar-menu",
-  storageBucket: "iftar-menu.firebasestorage.app",
-  messagingSenderId: "885118570585",
-  appId: "1:885118570585:web:4c1dce6351ed555497a148"
+const firebaseConfig={
+ apiKey:"AIzaSyDYn2R6RZ4Tt2X6virO5RJ6Aqumv3sCfA0",
+ authDomain:"iftar-menu.firebaseapp.com",
+ projectId:"iftar-menu",
+ storageBucket:"iftar-menu.firebasestorage.app",
+ messagingSenderId:"885118570585",
+ appId:"1:885118570585:web:4c1dce6351ed555497a148"
 };
-
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db=firebase.firestore();
 
 /* MAP */
 let userLat=23.8103,userLng=90.4125;
+let selectedLat=null,selectedLng=null;
+
 const map=L.map('map').setView([userLat,userLng],12);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-if(navigator.geolocation){
- navigator.geolocation.getCurrentPosition(pos=>{
-   userLat=pos.coords.latitude;
-   userLng=pos.coords.longitude;
-   map.setView([userLat,userLng],13);
-   L.marker([userLat,userLng]).addTo(map).bindPopup("আপনি এখানে");
- });
-}
+navigator.geolocation?.getCurrentPosition(pos=>{
+ userLat=pos.coords.latitude;
+ userLng=pos.coords.longitude;
+ map.setView([userLat,userLng],14);
+ L.marker([userLat,userLng]).addTo(map).bindPopup("আপনি এখানে");
+});
 
-/* ELEMENTS */
-const list=document.getElementById('list');
-const nameEl=document.getElementById('name');
-const iftarEl=document.getElementById('iftar');
-const locationTextEl=document.getElementById('locationText');
+let selectMarker=null;
+map.on('click',e=>{
+ selectedLat=e.latlng.lat;
+ selectedLng=e.latlng.lng;
+ if(selectMarker) map.removeLayer(selectMarker);
+ selectMarker=L.marker([selectedLat,selectedLng]).addTo(map)
+  .bindPopup("লোকেশন সিলেক্ট হয়েছে").openPopup();
+});
 
-/* ADD DATA */
+/* ADD */
 async function addMosque(){
+
  const name=nameEl.value.trim();
  const iftar=iftarEl.value.trim();
  const locationText=locationTextEl.value.trim();
- if(!name||!iftar) return alert('সব তথ্য দিন');
+ if(!name||!iftar) return alert("সব তথ্য দিন");
 
  await db.collection('mosques').add({
    name,iftar,locationText,
-   lat:userLat,lng:userLng,
+   lat:selectedLat||userLat,
+   lng:selectedLng||userLng,
    yes:0,no:0,
-   date:new Date().toISOString().slice(0,10),
-   created:Date.now()
+   date:new Date().toISOString().slice(0,10)
  });
 
- nameEl.value='';
- iftarEl.value='';
- locationTextEl.value='';
+ nameEl.value="";
+ iftarEl.value="";
+ locationTextEl.value="";
 }
 
-/* LOAD TODAY DATA (INDEX ছাড়া কাজ করবে) */
+/* DISTANCE */
+function distance(lat1,lng1,lat2,lng2){
+ const R=6371;
+ const dLat=(lat2-lat1)*Math.PI/180;
+ const dLng=(lng2-lng1)*Math.PI/180;
+ const a=Math.sin(dLat/2)**2+
+ Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+ Math.sin(dLng/2)**2;
+ return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* LOAD TODAY + NEAREST FIRST */
 const today=new Date().toISOString().slice(0,10);
 
-db.collection('mosques')
-.where('date','==',today)
+db.collection('mosques').where('date','==',today)
 .onSnapshot(snap=>{
 
  list.innerHTML='';
- 
- // map marker reset (duplicate বন্ধ)
- map.eachLayer(layer=>{
-   if(layer instanceof L.Marker && !layer._icon?.title){
-     map.removeLayer(layer);
-   }
- });
+ let arr=[];
 
  snap.forEach(doc=>{
    const d=doc.data();
+   arr.push({id:doc.id,...d});
+ });
+
+ arr.sort((a,b)=>{
+   const da=distance(userLat,userLng,a.lat,a.lng);
+   const dbb=distance(userLat,userLng,b.lat,b.lng);
+   return da-dbb;
+ });
+
+ arr.forEach(d=>{
 
    if(d.lat&&d.lng){
      L.marker([d.lat,d.lng]).addTo(map)
       .bindPopup(`<b>${d.name}</b><br>${d.iftar}`);
    }
 
-   const votedKey='vote_'+doc.id;
-   const voted=localStorage.getItem(votedKey);
+   const voted=localStorage.getItem('vote_'+d.id);
 
    const card=document.createElement('div');
    card.className='card';
@@ -134,26 +148,20 @@ db.collection('mosques')
    🍽️ ${d.iftar}
 
    <div class="vote">
-     <button onclick="vote('${doc.id}','yes')" ${voted?'disabled':''}>✔ সঠিক (${d.yes||0})</button>
-     <button onclick="vote('${doc.id}','no')" ${voted?'disabled':''}>✖ ভুল (${d.no||0})</button>
+   <button onclick="vote('${d.id}','yes')" ${voted?'disabled':''}>✔ (${d.yes||0})</button>
+   <button onclick="vote('${d.id}','no')" ${voted?'disabled':''}>✖ (${d.no||0})</button>
    </div>
-   <small>${voted?'আপনি ভোট দিয়েছেন':''}</small>
    `;
    list.appendChild(card);
  });
 
-},err=>{
- console.error("Firestore error:",err);
- alert("ডাটা লোড হচ্ছে না — Firestore rules চেক করুন");
 });
 
 /* VOTE */
 async function vote(id,type){
- const key='vote_'+id;
- if(localStorage.getItem(key)) return alert('আপনি ইতিমধ্যে ভোট দিয়েছেন');
+ if(localStorage.getItem('vote_'+id)) return alert("ভোট দেওয়া হয়েছে");
 
  const ref=db.collection('mosques').doc(id);
-
  await db.runTransaction(async t=>{
    const doc=await t.get(ref);
    const data=doc.data();
@@ -161,8 +169,13 @@ async function vote(id,type){
    else t.update(ref,{no:(data.no||0)+1});
  });
 
- localStorage.setItem(key,'1');
+ localStorage.setItem('vote_'+id,'1');
 }
+
+const nameEl=document.getElementById('name');
+const iftarEl=document.getElementById('iftar');
+const locationTextEl=document.getElementById('locationText');
+const list=document.getElementById('list');
 
 </script>
 </body>
