@@ -5,11 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>রমজান ইফতার ম্যাপ</title>
 
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-<!-- Leaflet Map -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -28,6 +26,7 @@ small{opacity:.7}
 </style>
 </head>
 <body>
+
 <header>🌙 রমজান ইফতার ম্যাপ 🕌</header>
 
 <div class="container">
@@ -46,21 +45,24 @@ small{opacity:.7}
 </div>
 
 <script>
-/* ================== FIREBASE CONFIG ================== */
+
+/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyDYn2R6RZ4Tt2X6virO5RJ6Aqumv3sCfA0",
   authDomain: "iftar-menu.firebaseapp.com",
   projectId: "iftar-menu",
   storageBucket: "iftar-menu.firebasestorage.app",
   messagingSenderId: "885118570585",
-  appId: "1:885118570585:web:4c1dce6351ed555497a148",
-  measurementId: "G-FPDC5QY2B3"
+  appId: "1:885118570585:web:4c1dce6351ed555497a148"
 };
-firebase.initializeApp(firebaseConfig);
-const db=firebase.firestore();
 
-/* ================== MAP + AUTO LOCATION ================== */
-let userLat=23.8103,userLng=90.4125; // default
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* MAP */
+let userLat=23.8103,userLng=90.4125;
+const map=L.map('map').setView([userLat,userLng],12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 if(navigator.geolocation){
  navigator.geolocation.getCurrentPosition(pos=>{
@@ -71,43 +73,51 @@ if(navigator.geolocation){
  });
 }
 
-const map=L.map('map').setView([userLat,userLng],12);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-/* ================== ADD DATA ================== */
-async function addMosque(){
-const name=nameEl.value.trim();
-const iftar=iftarEl.value.trim();
-const locationText=locationTextEl.value.trim();
-if(!name||!iftar) return alert('সব তথ্য দিন');
-
-await db.collection('mosques').add({
- name,iftar,locationText,
- lat:userLat,lng:userLng,
- yes:0,no:0,
- date:new Date().toISOString().slice(0,10),
- created:Date.now()
-});
-
-nameEl.value='';iftarEl.value='';locationTextEl.value='';
-}
-
+/* ELEMENTS */
 const list=document.getElementById('list');
 const nameEl=document.getElementById('name');
 const iftarEl=document.getElementById('iftar');
 const locationTextEl=document.getElementById('locationText');
 
-/* ================== LOAD TODAY ONLY ================== */
+/* ADD DATA */
+async function addMosque(){
+ const name=nameEl.value.trim();
+ const iftar=iftarEl.value.trim();
+ const locationText=locationTextEl.value.trim();
+ if(!name||!iftar) return alert('সব তথ্য দিন');
+
+ await db.collection('mosques').add({
+   name,iftar,locationText,
+   lat:userLat,lng:userLng,
+   yes:0,no:0,
+   date:new Date().toISOString().slice(0,10),
+   created:Date.now()
+ });
+
+ nameEl.value='';
+ iftarEl.value='';
+ locationTextEl.value='';
+}
+
+/* LOAD TODAY DATA (INDEX ছাড়া কাজ করবে) */
 const today=new Date().toISOString().slice(0,10);
 
-db.collection('mosques').where('date','==',today)
-.orderBy('created','desc')
+db.collection('mosques')
+.where('date','==',today)
 .onSnapshot(snap=>{
+
  list.innerHTML='';
+ 
+ // map marker reset (duplicate বন্ধ)
+ map.eachLayer(layer=>{
+   if(layer instanceof L.Marker && !layer._icon?.title){
+     map.removeLayer(layer);
+   }
+ });
+
  snap.forEach(doc=>{
    const d=doc.data();
 
-   /* map marker */
    if(d.lat&&d.lng){
      L.marker([d.lat,d.lng]).addTo(map)
       .bindPopup(`<b>${d.name}</b><br>${d.iftar}`);
@@ -131,24 +141,29 @@ db.collection('mosques').where('date','==',today)
    `;
    list.appendChild(card);
  });
+
+},err=>{
+ console.error("Firestore error:",err);
+ alert("ডাটা লোড হচ্ছে না — Firestore rules চেক করুন");
 });
 
-/* ================== ONE USER ONE VOTE ================== */
+/* VOTE */
 async function vote(id,type){
-const key='vote_'+id;
-if(localStorage.getItem(key)) return alert('আপনি ইতিমধ্যে ভোট দিয়েছেন');
+ const key='vote_'+id;
+ if(localStorage.getItem(key)) return alert('আপনি ইতিমধ্যে ভোট দিয়েছেন');
 
-const ref=db.collection('mosques').doc(id);
-await db.runTransaction(async t=>{
- const doc=await t.get(ref);
- const data=doc.data();
- if(type==='yes') t.update(ref,{yes:(data.yes||0)+1});
- else t.update(ref,{no:(data.no||0)+1});
-});
+ const ref=db.collection('mosques').doc(id);
 
-localStorage.setItem(key,'1');
+ await db.runTransaction(async t=>{
+   const doc=await t.get(ref);
+   const data=doc.data();
+   if(type==='yes') t.update(ref,{yes:(data.yes||0)+1});
+   else t.update(ref,{no:(data.no||0)+1});
+ });
+
+ localStorage.setItem(key,'1');
 }
+
 </script>
 </body>
 </html>
-
